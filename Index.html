@@ -1,0 +1,2596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Hit Machar — Arcade Game</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --brand-orange: #f97316;
+      --brand-orange-dark: #ea580c;
+      --ink: #0f172a;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(circle at top, #f8fafc 0%, #e2e8f0 100%);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      color: var(--ink);
+    }
+
+    .font-arcade {
+      font-family: 'Fredoka', 'Inter', sans-serif;
+    }
+
+    /* Centered responsive mobile & desktop arcade viewport */
+    #game-shell {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      max-width: 480px;
+      margin: 0 auto;
+      background: #ffffff;
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.16);
+      overflow: hidden;
+    }
+
+    @media (min-width: 520px) {
+      #game-shell {
+        height: min(94vh, 880px);
+        margin-top: max(3vh, calc((100vh - 880px) / 2));
+        border-radius: 28px;
+        border: 3px solid #0f172a;
+      }
+    }
+
+    #game-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      cursor: crosshair;
+      background: #ffffff;
+    }
+
+    /* Tactile arcade buttons */
+    .btn-arcade {
+      transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.15s ease;
+      box-shadow: 0 5px 0 #0f172a;
+      border: 2.5px solid #0f172a;
+    }
+
+    .btn-arcade:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 0 #0f172a;
+    }
+
+    .btn-arcade:active {
+      transform: translateY(3px);
+      box-shadow: 0 2px 0 #0f172a;
+    }
+
+    .btn-tactile-sm {
+      transition: transform 0.1s ease, box-shadow 0.1s ease, background-color 0.15s ease;
+      box-shadow: 0 3px 0 #0f172a;
+      border: 2px solid #0f172a;
+    }
+
+    .btn-tactile-sm:active {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 #0f172a;
+    }
+
+    /* Animated buzzing mosquito on landing screen */
+    @keyframes buzzFloat {
+      0%, 100% { transform: translate(0px, 0px) rotate(-6deg); }
+      25% { transform: translate(10px, -8px) rotate(5deg); }
+      50% { transform: translate(-8px, -14px) rotate(-8deg); }
+      75% { transform: translate(-12px, -4px) rotate(6deg); }
+    }
+
+    .animate-buzz {
+      animation: buzzFloat 2.6s ease-in-out infinite;
+    }
+
+    @keyframes wingFlap {
+      0%, 100% { transform: scaleY(1); }
+      50% { transform: scaleY(0.35); }
+    }
+
+    .wing-flap {
+      transform-origin: center bottom;
+      animation: wingFlap 0.09s linear infinite;
+    }
+
+    @keyframes scorePop {
+      0% { transform: scale(1); }
+      40% { transform: scale(1.32); color: #f97316; }
+      100% { transform: scale(1); }
+    }
+
+    .score-pop {
+      animation: scorePop 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    /* Drag-and-drop highlight state */
+    .drop-active {
+      border-color: #f97316 !important;
+      background-color: #fff7ed !important;
+      box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.24);
+    }
+
+    /* Slim scrollbar for compact mobile screens */
+    .landing-scroll::-webkit-scrollbar {
+      width: 5px;
+    }
+    .landing-scroll::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-shell">
+    <!-- ==================== GAMEPLAY CANVAS ==================== -->
+    <canvas id="game-canvas" aria-label="Hit Machar Game Canvas"></canvas>
+
+    <!-- ==================== IN-GAME HUD ==================== -->
+    <div id="hud" class="hidden pointer-events-none absolute inset-x-0 top-0 z-20 p-3.5 sm:p-4 flex items-start justify-between">
+      <!-- Top-Left: Sound Mute Toggle -->
+      <button id="btn-mute" type="button" aria-label="Toggle Sound"
+        class="pointer-events-auto btn-tactile-sm w-11 h-11 rounded-2xl bg-white hover:bg-slate-50 flex items-center justify-center text-lg">
+        <span id="mute-icon">🔊</span>
+      </button>
+
+      <!-- Top-Center: Score, Best Score, Combo & Misses/Lives -->
+      <div class="flex flex-col items-center select-none">
+        <div id="hud-score" class="font-arcade text-5xl font-bold text-slate-900 leading-none tracking-tight">0</div>
+        <div id="hud-best" class="text-[11px] font-extrabold text-slate-500 tracking-widest uppercase mt-1">BEST 0</div>
+        <div id="hud-combo" class="hidden mt-1.5 px-2.5 py-0.5 rounded-full bg-orange-100 border border-orange-300 text-orange-600 text-[11px] font-extrabold tracking-wide uppercase">
+          🔥 x2 COMBO
+        </div>
+        <div id="hud-lives" class="hidden mt-2 flex items-center gap-1 bg-slate-100/95 px-2.5 py-1 rounded-full border border-slate-200 text-xs">
+          <!-- Hearts populated dynamically in 5-Miss mode -->
+        </div>
+      </div>
+
+      <!-- Top-Right: Pause Button -->
+      <button id="btn-pause" type="button" aria-label="Pause Game"
+        class="pointer-events-auto btn-tactile-sm w-11 h-11 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <rect x="6" y="5" width="4" height="14" rx="1.5"></rect>
+          <rect x="14" y="5" width="4" height="14" rx="1.5"></rect>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Bottom-Center Gameplay Hint -->
+    <div id="hud-hint" class="hidden pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center">
+      <div class="px-3.5 py-1 rounded-full bg-slate-900/80 text-white text-[11px] font-semibold tracking-wide">
+        Aim &amp; tap anywhere to swat!
+      </div>
+    </div>
+
+    <!-- ==================== LANDING SCREEN ==================== -->
+    <div id="landing-screen" class="absolute inset-0 z-30 bg-white/95 backdrop-blur-xs flex flex-col justify-between p-4 sm:p-5 overflow-y-auto landing-scroll">
+      <!-- Top Header & Animated Mosquito -->
+      <div class="flex flex-col items-center text-center pt-0.5">
+        <div class="relative w-24 h-14 flex items-center justify-center mb-1">
+          <svg class="w-20 h-14 animate-buzz overflow-visible" viewBox="0 0 120 80" aria-hidden="true">
+            <path d="M12 46 Q6 40 14 34" fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="4 4" />
+            <path d="M104 28 Q112 22 104 16" fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="4 4" />
+            <ellipse class="wing-flap" cx="56" cy="24" rx="16" ry="9" transform="rotate(-18 56 24)" fill="#e0f2fe" stroke="#0f172a" stroke-width="2.5" />
+            <ellipse class="wing-flap" cx="68" cy="24" rx="15" ry="8" transform="rotate(20 68 24)" fill="#f0f9ff" stroke="#0f172a" stroke-width="2.5" />
+            <path d="M52 48 L44 62 L38 64 M62 50 L60 65 L56 68 M72 48 L80 62 L86 64" fill="none" stroke="#0f172a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+            <ellipse cx="44" cy="43" rx="16" ry="9" transform="rotate(-12 44 43)" fill="#ef4444" stroke="#0f172a" stroke-width="2.8" />
+            <path d="M36 37 L39 50 M44 35 L47 51 M52 36 L54 49" stroke="#0f172a" stroke-width="2.5" />
+            <circle cx="65" cy="41" r="9" fill="#334155" stroke="#0f172a" stroke-width="2.8" />
+            <circle cx="77" cy="39" r="7" fill="#1e293b" stroke="#0f172a" stroke-width="2.8" />
+            <circle cx="79" cy="37" r="3.4" fill="#ffffff" stroke="#0f172a" stroke-width="1.5" />
+            <circle cx="80" cy="37" r="1.4" fill="#0f172a" />
+            <path d="M84 40 L102 45" stroke="#0f172a" stroke-width="2.8" stroke-linecap="round" />
+          </svg>
+        </div>
+
+        <div class="inline-block px-3.5 py-0.5 rounded-xl bg-orange-500 border-2 border-slate-900 shadow-[0_3px_0_#0f172a] mb-1">
+          <span class="font-arcade text-white text-xs sm:text-sm tracking-wide uppercase font-bold">Game: Hit Machar</span>
+        </div>
+
+        <h1 class="font-arcade text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight leading-tight">
+          Swat The Mosquito!
+        </h1>
+
+        <div class="mt-1.5 inline-flex items-center gap-2 px-3.5 py-0.5 rounded-full bg-amber-50 border-2 border-amber-300 text-amber-900 text-xs font-extrabold tracking-wide">
+          <span>🏆 BEST SCORE:</span>
+          <span id="landing-best" class="text-sm text-orange-600">0</span>
+        </div>
+      </div>
+
+      <!-- Center Controls: Mode/Aim Toggles + 3-Slot Custom Assets Panel -->
+      <div class="space-y-2.5 my-2.5">
+        <!-- Mode & Aim Toggles -->
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-slate-100 p-1 rounded-2xl border border-slate-200">
+            <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-center mb-1">Mode</div>
+            <div class="grid grid-cols-2 gap-1">
+              <button id="mode-endless" type="button" class="py-1.5 px-1 rounded-xl text-[11px] font-bold transition bg-white text-slate-900 shadow-xs">
+                ♾️ Endless
+              </button>
+              <button id="mode-challenge" type="button" class="py-1.5 px-1 rounded-xl text-[11px] font-bold transition text-slate-500 hover:text-slate-800">
+                🎯 5-Miss
+              </button>
+            </div>
+          </div>
+
+          <div class="bg-slate-100 p-1 rounded-2xl border border-slate-200">
+            <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 text-center mb-1">Aim Style</div>
+            <div class="grid grid-cols-2 gap-1">
+              <button id="aim-point" type="button" class="py-1.5 px-1 rounded-xl text-[11px] font-bold transition bg-white text-slate-900 shadow-xs">
+                👆 Point
+              </button>
+              <button id="aim-sweep" type="button" class="py-1.5 px-1 rounded-xl text-[11px] font-bold transition text-slate-500 hover:text-slate-800">
+                ⏱️ Sweep
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3-Slot Custom Assets Card (Auto-collapses to green ready badge when all 3 auto-load on GitHub Pages) -->
+        <div id="assets-section" class="rounded-2xl border-2 border-slate-900 bg-orange-50/70 overflow-hidden shadow-[0_4px_0_#0f172a] transition-colors">
+          <!-- Card Header / Collapsed Ready Badge -->
+          <div id="assets-header" class="flex items-center justify-between px-3 py-2 bg-orange-100/90 border-b border-orange-200 transition-colors">
+            <div class="flex items-center gap-2 min-w-0">
+              <span id="assets-dot" class="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0"></span>
+              <span id="assets-title" class="font-arcade text-xs sm:text-sm font-bold text-slate-900 truncate">
+                Custom Face, Hit &amp; Buzz Audio
+              </span>
+            </div>
+            <button id="btn-toggle-assets" type="button"
+              class="shrink-0 text-[11px] font-extrabold text-orange-800 hover:text-slate-900 bg-white/90 px-2.5 py-1 rounded-lg border border-orange-300 transition">
+              Hide
+            </button>
+          </div>
+
+          <!-- Collapsible 3-Slot Dropzone Body -->
+          <div id="assets-dropzone" class="p-2.5 space-y-2 transition-colors">
+            <!-- Slot 1: Sleeper Face Photo -->
+            <div id="slot-face" class="flex items-center gap-2.5 bg-white p-2 rounded-xl border border-slate-200 transition-colors">
+              <div class="w-11 h-11 rounded-full bg-slate-100 border-2 border-slate-900 overflow-hidden shrink-0 flex items-center justify-center">
+                <img id="face-preview-thumb" src="" alt="Sleeper face preview" class="hidden w-full h-full object-cover" />
+                <span id="face-preview-fallback" class="text-lg" aria-hidden="true">🧔</span>
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="text-xs font-extrabold text-slate-900 leading-tight">1. Sleeper Face</div>
+                <div id="face-status" class="text-[11px] text-slate-500 truncate mt-0.5">Cartoon face fallback</div>
+              </div>
+              <input id="faceInput" type="file" accept="image/*" class="sr-only" />
+              <label for="faceInput"
+                class="btn-tactile-sm cursor-pointer shrink-0 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-xl select-none">
+                Choose
+              </label>
+            </div>
+
+            <!-- Slot 2: Hit Reaction Audio (6s Cap) -->
+            <div id="slot-hit" class="bg-white p-2 rounded-xl border border-slate-200 space-y-1.5 transition-colors">
+              <div class="flex items-center gap-2">
+                <button id="btn-test-audio" type="button"
+                  class="btn-tactile-sm shrink-0 bg-orange-500 hover:bg-orange-400 text-white text-[11px] font-extrabold px-2.5 py-1.5 rounded-xl flex items-center gap-1">
+                  <span id="test-audio-label">▶ Test 6s</span>
+                </button>
+                <div class="min-w-0 flex-1">
+                  <div class="text-xs font-extrabold text-slate-900 leading-tight">2. Hit Sound <span class="text-orange-600">(6s Cap)</span></div>
+                  <div id="audio-status" class="text-[11px] text-slate-500 truncate mt-0.5">Built-in slap + voice</div>
+                </div>
+                <input id="audioInput" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a" class="sr-only" />
+                <label for="audioInput"
+                  class="btn-tactile-sm cursor-pointer shrink-0 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-xl select-none">
+                  Choose
+                </label>
+              </div>
+
+              <!-- Live 6.0s Countdown / Progress Bar -->
+              <div id="audio-progress-wrap" class="hidden space-y-1 pt-0.5">
+                <div class="flex items-center justify-between text-[10px] font-bold text-slate-600">
+                  <span id="audio-progress-mode">Playing hit clip (6s cap)</span>
+                  <span id="audio-progress-time" class="font-mono text-orange-600">0.0s / 6.0s</span>
+                </div>
+                <div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                  <div id="audio-progress-bar" class="h-full bg-orange-500 rounded-full transition-[width] duration-75" style="width: 0%"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Slot 3: Mosquito Buzz Loop (machhar.mp3) -->
+            <div id="slot-buzz" class="bg-white p-2 rounded-xl border border-slate-200 space-y-1.5 transition-colors">
+              <div class="flex items-center gap-2">
+                <button id="btn-test-buzz" type="button"
+                  class="btn-tactile-sm shrink-0 bg-amber-500 hover:bg-amber-400 text-white text-[11px] font-extrabold px-2.5 py-1.5 rounded-xl flex items-center gap-1">
+                  <span id="test-buzz-label">▶ Test Buzz</span>
+                </button>
+                <div class="min-w-0 flex-1">
+                  <div class="text-xs font-extrabold text-slate-900 leading-tight">3. Mosquito Buzz <span class="text-amber-600">(Loop)</span></div>
+                  <div id="buzz-status" class="text-[11px] text-slate-500 truncate mt-0.5">Built-in synth buzz</div>
+                </div>
+                <input id="buzzInput" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a" class="sr-only" />
+                <label for="buzzInput"
+                  class="btn-tactile-sm cursor-pointer shrink-0 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-xl select-none">
+                  Choose
+                </label>
+              </div>
+            </div>
+
+            <!-- Inline Friendly Feedback / Hint Box -->
+            <div id="audio-feedback" class="hidden text-[11px] font-semibold px-2.5 py-1.5 rounded-lg"></div>
+
+            <div class="text-center text-[10px] font-semibold text-slate-500">
+              Tip: Drag &amp; drop face JPG or hit / machhar MP3 onto any slot above
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Primary Start Game CTA -->
+      <div class="pt-0.5 pb-1">
+        <button id="btn-start" type="button"
+          class="btn-arcade w-full py-3.5 rounded-2xl bg-orange-500 hover:bg-orange-400 text-white font-arcade text-xl font-bold tracking-wide flex items-center justify-center gap-2">
+          <span>▶ START GAME</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ==================== PAUSE MODAL ==================== -->
+    <div id="pause-modal" class="hidden absolute inset-0 z-40 bg-slate-900/55 backdrop-blur-xs flex items-center justify-center p-5">
+      <div class="w-full max-w-xs bg-white rounded-3xl border-[3px] border-slate-900 shadow-[0_10px_0_#0f172a] p-6 text-center space-y-4">
+        <h2 class="font-arcade text-3xl font-bold text-slate-900">Paused</h2>
+        <div class="space-y-2.5">
+          <button id="btn-resume" type="button"
+            class="btn-arcade w-full py-3 rounded-2xl bg-orange-500 hover:bg-orange-400 text-white font-arcade text-lg font-bold">
+            ▶ Resume
+          </button>
+          <button id="btn-restart-pause" type="button"
+            class="btn-arcade w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold text-sm">
+            🔄 Restart Run
+          </button>
+          <button id="btn-mute-pause" type="button"
+            class="btn-arcade w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold text-sm">
+            🔊 Sound: ON
+          </button>
+          <button id="btn-menu-pause" type="button"
+            class="btn-arcade w-full py-2.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-700 font-bold text-sm">
+            🏠 Main Menu
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== GAME OVER MODAL ==================== -->
+    <div id="gameover-modal" class="hidden absolute inset-0 z-40 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-5">
+      <div class="w-full max-w-xs bg-white rounded-3xl border-[3px] border-slate-900 shadow-[0_10px_0_#0f172a] p-6 text-center space-y-4">
+        <div>
+          <div id="gameover-newbest" class="hidden inline-block mb-1 px-3 py-0.5 rounded-full bg-amber-100 border border-amber-400 text-amber-800 text-[11px] font-extrabold uppercase tracking-wider">
+            🏆 NEW BEST SCORE!
+          </div>
+          <h2 class="font-arcade text-3xl font-bold text-slate-900">Game Over!</h2>
+          <p class="text-xs font-semibold text-slate-500 mt-0.5">The machar escaped this time!</p>
+        </div>
+
+        <!-- Final Score, Best Score & Accuracy -->
+        <div class="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-2xl border-2 border-slate-200">
+          <div>
+            <div class="text-[10px] font-extrabold uppercase text-slate-400">Score</div>
+            <div id="go-score" class="font-arcade text-2xl font-bold text-orange-600">0</div>
+          </div>
+          <div>
+            <div class="text-[10px] font-extrabold uppercase text-slate-400">Best</div>
+            <div id="go-best" class="font-arcade text-2xl font-bold text-slate-900">0</div>
+          </div>
+          <div>
+            <div class="text-[10px] font-extrabold uppercase text-slate-400">Accuracy</div>
+            <div id="go-accuracy" class="font-arcade text-2xl font-bold text-emerald-600">0%</div>
+          </div>
+        </div>
+
+        <div class="space-y-2.5">
+          <button id="btn-play-again" type="button"
+            class="btn-arcade w-full py-3 rounded-2xl bg-orange-500 hover:bg-orange-400 text-white font-arcade text-lg font-bold">
+            🔄 Play Again
+          </button>
+          <button id="btn-menu-go" type="button"
+            class="btn-arcade w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold text-sm">
+            🏠 Main Menu
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Non-intrusive Toast Notification -->
+    <div id="toast" class="pointer-events-none opacity-0 translate-y-2 transition-all duration-200 absolute bottom-5 inset-x-4 z-50 flex justify-center">
+      <div id="toast-text" class="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold shadow-lg text-center"></div>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      'use strict';
+
+      /* =====================================================================
+         1. DOM REFERENCES & CONFIGURATION
+      ===================================================================== */
+      const canvas = document.getElementById('game-canvas');
+      const ctx = canvas.getContext('2d');
+      const shell = document.getElementById('game-shell');
+
+      // Screens & Modals
+      const landingScreen = document.getElementById('landing-screen');
+      const hudEl = document.getElementById('hud');
+      const hudHintEl = document.getElementById('hud-hint');
+      const pauseModal = document.getElementById('pause-modal');
+      const gameoverModal = document.getElementById('gameover-modal');
+
+      // HUD Elements
+      const hudScoreEl = document.getElementById('hud-score');
+      const hudBestEl = document.getElementById('hud-best');
+      const hudComboEl = document.getElementById('hud-combo');
+      const hudLivesEl = document.getElementById('hud-lives');
+      const landingBestEl = document.getElementById('landing-best');
+      const muteIconEl = document.getElementById('mute-icon');
+      const btnMutePause = document.getElementById('btn-mute-pause');
+
+      // Game Over Elements
+      const goNewBestEl = document.getElementById('gameover-newbest');
+      const goScoreEl = document.getElementById('go-score');
+      const goBestEl = document.getElementById('go-best');
+      const goAccuracyEl = document.getElementById('go-accuracy');
+
+      // Mode & Aim Buttons
+      const btnModeEndless = document.getElementById('mode-endless');
+      const btnModeChallenge = document.getElementById('mode-challenge');
+      const btnAimPoint = document.getElementById('aim-point');
+      const btnAimSweep = document.getElementById('aim-sweep');
+
+      // Custom Assets Panel Elements
+      const assetsSection = document.getElementById('assets-section');
+      const assetsHeader = document.getElementById('assets-header');
+      const assetsDot = document.getElementById('assets-dot');
+      const assetsTitle = document.getElementById('assets-title');
+      const btnToggleAssets = document.getElementById('btn-toggle-assets');
+      const assetsDropzone = document.getElementById('assets-dropzone');
+      const slotFace = document.getElementById('slot-face');
+      const slotHit = document.getElementById('slot-hit');
+      const slotBuzz = document.getElementById('slot-buzz');
+
+      // File Inputs & Status Labels
+      const faceInput = document.getElementById('faceInput');
+      const audioInput = document.getElementById('audioInput');
+      const buzzInput = document.getElementById('buzzInput');
+      const facePreviewThumb = document.getElementById('face-preview-thumb');
+      const facePreviewFallback = document.getElementById('face-preview-fallback');
+      const faceStatusEl = document.getElementById('face-status');
+      const audioStatusEl = document.getElementById('audio-status');
+      const buzzStatusEl = document.getElementById('buzz-status');
+
+      // Audio Test Buttons & Progress UI
+      const btnTestAudio = document.getElementById('btn-test-audio');
+      const testAudioLabel = document.getElementById('test-audio-label');
+      const btnTestBuzz = document.getElementById('btn-test-buzz');
+      const testBuzzLabel = document.getElementById('test-buzz-label');
+      const audioProgressWrap = document.getElementById('audio-progress-wrap');
+      const audioProgressMode = document.getElementById('audio-progress-mode');
+      const audioProgressTime = document.getElementById('audio-progress-time');
+      const audioProgressBar = document.getElementById('audio-progress-bar');
+      const audioFeedbackEl = document.getElementById('audio-feedback');
+
+      // Toast
+      const toastEl = document.getElementById('toast');
+      const toastTextEl = document.getElementById('toast-text');
+
+      // Constants
+      const STORAGE_KEY_BEST = 'hit_machar_best_v3';
+      const MAX_AUDIO_SECONDS = 6.0;
+
+      // Zero-fetch candidate paths for GitHub Pages & local file://
+      const FACE_CANDIDATE_PATHS = [
+        './IMG_6891.jpeg',
+        './assets/IMG_6891.jpeg',
+        './assets/face.jpg'
+      ];
+      const HIT_AUDIO_CANDIDATE_PATHS = [
+        './amitabh-bachchan-teri-maa-ka-vosda.mp3',
+        './assets/amitabh-bachchan-teri-maa-ka-vosda.mp3',
+        './assets/hit.mp3'
+      ];
+      const BUZZ_AUDIO_CANDIDATE_PATHS = [
+        './machhar.mp3',
+        './assets/machhar.mp3',
+        './buzz.mp3',
+        './assets/buzz.mp3'
+      ];
+
+      // Global Game State
+      const state = {
+        screen: 'landing', // 'landing' | 'playing' | 'paused' | 'gameover'
+        mode: 'endless',   // 'endless' | 'challenge'
+        aimStyle: 'point', // 'point' | 'sweep'
+        score: 0,
+        combo: 0,
+        shotsFired: 0,
+        hitsLanded: 0,
+        bestScore: parseInt(localStorage.getItem(STORAGE_KEY_BEST) || '0', 10) || 0,
+        isNewBest: false,
+        lives: 5,
+        maxLives: 5,
+        muted: false,
+        hasShotOnce: false,
+        assetsExpanded: true,
+        userToggledAssets: false,
+        width: 390,
+        height: 760,
+        dpr: Math.min(window.devicePixelRatio || 1, 2)
+      };
+
+      let toastTimer = null;
+      function showToast(msg) {
+        toastTextEl.textContent = msg;
+        toastEl.classList.remove('opacity-0', 'translate-y-2');
+        toastEl.classList.add('opacity-100', 'translate-y-0');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          toastEl.classList.remove('opacity-100', 'translate-y-0');
+          toastEl.classList.add('opacity-0', 'translate-y-2');
+        }, 2300);
+      }
+
+      function setAudioFeedback(message, type = 'info') {
+        if (!message) {
+          audioFeedbackEl.classList.add('hidden');
+          audioFeedbackEl.textContent = '';
+          return;
+        }
+        audioFeedbackEl.textContent = message;
+        audioFeedbackEl.classList.remove(
+          'hidden',
+          'bg-amber-50', 'text-amber-800', 'border', 'border-amber-200',
+          'bg-red-50', 'text-red-700', 'border-red-200',
+          'bg-emerald-50', 'text-emerald-800', 'border-emerald-200'
+        );
+        if (type === 'error') {
+          audioFeedbackEl.classList.add('bg-red-50', 'text-red-700', 'border', 'border-red-200');
+        } else if (type === 'success') {
+          audioFeedbackEl.classList.add('bg-emerald-50', 'text-emerald-800', 'border', 'border-emerald-200');
+        } else {
+          audioFeedbackEl.classList.add('bg-amber-50', 'text-amber-800', 'border', 'border-amber-200');
+        }
+      }
+
+      function setAssetsPanelExpanded(expanded) {
+        state.assetsExpanded = expanded;
+        if (expanded) {
+          assetsDropzone.classList.remove('hidden');
+          btnToggleAssets.textContent = 'Hide';
+        } else {
+          assetsDropzone.classList.add('hidden');
+          btnToggleAssets.textContent = 'Swap';
+        }
+      }
+
+      // Updates the Custom Assets header styling & auto-collapses when all 3 auto-load on GitHub Pages
+      function updateAssetsHeaderStatus() {
+        const allReady = faceAsset.loaded && audioEngine.hitAudioReady && audioEngine.buzzAudioReady;
+        const allAutoLoaded = allReady && !faceAsset.userUploaded && !audioEngine.hitUserUploaded && !audioEngine.buzzUserUploaded;
+
+        assetsDot.classList.remove('bg-amber-500', 'bg-emerald-500', 'animate-pulse');
+        if (allReady) {
+          assetsDot.classList.add('bg-emerald-500', 'animate-pulse');
+          assetsTitle.textContent = 'Custom Face, Hit & Buzz Ready';
+          assetsSection.classList.remove('bg-orange-50/70');
+          assetsSection.classList.add('bg-emerald-50/80');
+          assetsHeader.classList.remove('bg-orange-100/90', 'border-orange-200');
+          assetsHeader.classList.add('bg-emerald-100/90', 'border-emerald-200');
+          btnToggleAssets.classList.remove('text-orange-800', 'border-orange-300');
+          btnToggleAssets.classList.add('text-emerald-900', 'border-emerald-300');
+
+          if (allAutoLoaded && !state.userToggledAssets) {
+            setAssetsPanelExpanded(false);
+          }
+        } else {
+          assetsDot.classList.add('bg-amber-500');
+          assetsTitle.textContent = 'Custom Face, Hit & Buzz Audio';
+          assetsSection.classList.add('bg-orange-50/70');
+          assetsSection.classList.remove('bg-emerald-50/80');
+          assetsHeader.classList.add('bg-orange-100/90', 'border-orange-200');
+          assetsHeader.classList.remove('bg-emerald-100/90', 'border-emerald-200');
+          btnToggleAssets.classList.add('text-orange-800', 'border-orange-300');
+          btnToggleAssets.classList.remove('text-emerald-900', 'border-emerald-300');
+        }
+      }
+
+      /* =====================================================================
+         2. FACE IMAGE LOADER (ZERO-FETCH, FileReader + createObjectURL)
+      ===================================================================== */
+      const faceAsset = {
+        img: null,
+        loaded: false,
+        userUploaded: false,
+        objectUrl: null,
+
+        tryAutoLoad(index = 0) {
+          if (this.userUploaded || index >= FACE_CANDIDATE_PATHS.length) return;
+          const path = FACE_CANDIDATE_PATHS[index];
+          const probe = new Image();
+          probe.onload = () => {
+            if (this.userUploaded) return;
+            this.applyImage(probe, path.replace(/^\.\//, ''), path);
+          };
+          probe.onerror = () => {
+            this.tryAutoLoad(index + 1);
+          };
+          probe.src = path;
+        },
+
+        applyImage(img, label, previewSrc) {
+          this.img = img;
+          this.loaded = true;
+          faceStatusEl.textContent = '✓ ' + label;
+          faceStatusEl.classList.remove('text-slate-500');
+          faceStatusEl.classList.add('text-emerald-700', 'font-bold');
+          facePreviewThumb.src = previewSrc;
+          facePreviewThumb.classList.remove('hidden');
+          facePreviewFallback.classList.add('hidden');
+          updateAssetsHeaderStatus();
+        },
+
+        loadFromFile(file) {
+          if (!file) return;
+          this.userUploaded = true;
+
+          const loadUrl = (src, isFallback = false) => {
+            const img = new Image();
+            img.onload = () => {
+              this.applyImage(img, file.name, src);
+              showToast('Custom sleeper face loaded!');
+            };
+            img.onerror = () => {
+              if (!isFallback) {
+                try {
+                  if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
+                  this.objectUrl = URL.createObjectURL(file);
+                  loadUrl(this.objectUrl, true);
+                } catch (e) {
+                  showToast('Could not read that image file.');
+                }
+              } else {
+                showToast('Unsupported image format.');
+              }
+            };
+            img.src = src;
+          };
+
+          try {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              if (e.target && typeof e.target.result === 'string') {
+                loadUrl(e.target.result, false);
+              }
+            };
+            reader.onerror = () => {
+              if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
+              this.objectUrl = URL.createObjectURL(file);
+              loadUrl(this.objectUrl, true);
+            };
+            reader.readAsDataURL(file);
+          } catch (err) {
+            try {
+              if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
+              this.objectUrl = URL.createObjectURL(file);
+              loadUrl(this.objectUrl, true);
+            } catch (e) {
+              showToast('Image upload failed.');
+            }
+          }
+        }
+      };
+
+      /* =====================================================================
+         3. AUDIO ENGINE (ZERO-FETCH, 6s HIT CLIP + LOOPING MACHHAR BUZZ)
+      ===================================================================== */
+      const audioEngine = {
+        ctx: null,
+
+        // Web Audio Fallback Buzz Synthesizer
+        synthBuzzOsc: null,
+        synthBuzzLfo: null,
+        synthBuzzGain: null,
+        synthBuzzActive: false,
+
+        // Custom Hit Reaction Audio (Strict 6.0s cap)
+        hitAudio: null,
+        hitAudioReady: false,
+        hitUserUploaded: false,
+        hitUnlocked: false,
+        hitObjectUrl: null,
+        isPlayingHit: false,
+        isPlayingHitFallbackTest: false,
+        hitStopTimer: null,
+        hitProgressInterval: null,
+        hitPlayStartedAt: 0,
+
+        // Custom Looping Mosquito Buzz Audio (machhar.mp3)
+        buzzAudio: null,
+        buzzAudioReady: false,
+        buzzUserUploaded: false,
+        buzzUnlocked: false,
+        buzzObjectUrl: null,
+        isTestingBuzz: false,
+        buzzGameplayActive: false,
+
+        initContext() {
+          try {
+            if (!this.ctx) {
+              const AudioCtx = window.AudioContext || window.webkitAudioContext;
+              if (AudioCtx) this.ctx = new AudioCtx();
+            }
+            if (this.ctx && this.ctx.state === 'suspended') {
+              this.ctx.resume().catch(() => {});
+            }
+          } catch (e) {}
+        },
+
+        // Unlock Web Audio and both HTMLAudioElements on first user gesture
+        unlockAll() {
+          this.initContext();
+          const unlockElement = (el, alreadyUnlocked, onDone, isCurrentlyPlaying) => {
+            if (!el || alreadyUnlocked) return;
+            onDone();
+            try {
+              const prevVol = el.volume;
+              el.volume = 0;
+              const p = el.play();
+              if (p && typeof p.then === 'function') {
+                p.then(() => {
+                  if (!isCurrentlyPlaying()) {
+                    el.pause();
+                    el.currentTime = 0;
+                  }
+                  el.volume = prevVol || 1.0;
+                }).catch(() => {
+                  el.volume = prevVol || 1.0;
+                });
+              }
+            } catch (e) {}
+          };
+
+          unlockElement(
+            this.hitAudio,
+            this.hitUnlocked || !this.hitAudioReady,
+            () => { this.hitUnlocked = true; },
+            () => this.isPlayingHit
+          );
+          unlockElement(
+            this.buzzAudio,
+            this.buzzUnlocked || !this.buzzAudioReady,
+            () => { this.buzzUnlocked = true; },
+            () => this.isTestingBuzz || this.buzzGameplayActive
+          );
+        },
+
+        // Generic zero-fetch sequential HTMLAudioElement prober (1.8s timeout per candidate)
+        probeAudioCandidates(paths, index, isCancelled, onSuccess) {
+          if (isCancelled() || index >= paths.length) return;
+          const path = paths[index];
+          const probe = new Audio();
+          probe.preload = 'metadata';
+          let settled = false;
+
+          const cleanup = () => {
+            clearTimeout(probeTimeout);
+            probe.oncanplay = null;
+            probe.onloadedmetadata = null;
+            probe.onerror = null;
+          };
+
+          const handleReady = () => {
+            if (settled || isCancelled()) return;
+            settled = true;
+            cleanup();
+            probe.preload = 'auto';
+            onSuccess(probe, path.replace(/^\.\//, ''));
+          };
+
+          const handleFail = () => {
+            if (settled || isCancelled()) return;
+            settled = true;
+            cleanup();
+            this.probeAudioCandidates(paths, index + 1, isCancelled, onSuccess);
+          };
+
+          const probeTimeout = setTimeout(handleFail, 1800);
+          probe.oncanplay = handleReady;
+          probe.onloadedmetadata = handleReady;
+          probe.onerror = handleFail;
+          probe.src = path;
+          try {
+            probe.load();
+          } catch (e) {
+            handleFail();
+          }
+        },
+
+        tryAutoLoadHit(index = 0) {
+          this.probeAudioCandidates(
+            HIT_AUDIO_CANDIDATE_PATHS,
+            index,
+            () => this.hitUserUploaded,
+            (audioEl, label) => this.attachHitAudio(audioEl, label)
+          );
+        },
+
+        tryAutoLoadBuzz(index = 0) {
+          this.probeAudioCandidates(
+            BUZZ_AUDIO_CANDIDATE_PATHS,
+            index,
+            () => this.buzzUserUploaded,
+            (audioEl, label) => this.attachBuzzAudio(audioEl, label)
+          );
+        },
+
+        attachHitAudio(audioEl, label) {
+          this.stopHitAudio();
+          this.hitAudio = audioEl;
+          this.hitAudioReady = true;
+          this.hitUnlocked = false;
+
+          // Strictly cap playback at 6.0 seconds via timeupdate
+          this.hitAudio.ontimeupdate = () => {
+            if (this.hitAudio && this.hitAudio.currentTime >= MAX_AUDIO_SECONDS) {
+              this.stopHitAudio();
+            }
+          };
+
+          this.hitAudio.onended = () => {
+            this.stopHitAudio();
+          };
+
+          audioStatusEl.textContent = '✓ ' + label;
+          audioStatusEl.classList.remove('text-slate-500');
+          audioStatusEl.classList.add('text-emerald-700', 'font-bold');
+          updateAssetsHeaderStatus();
+        },
+
+        attachBuzzAudio(audioEl, label) {
+          this.stopBuzzTest();
+          this.stopAllBuzz();
+          this.buzzAudio = audioEl;
+          this.buzzAudio.loop = true;
+          this.buzzAudio.volume = 0.65;
+          this.buzzAudioReady = true;
+          this.buzzUnlocked = false;
+
+          buzzStatusEl.textContent = '✓ ' + label;
+          buzzStatusEl.classList.remove('text-slate-500');
+          buzzStatusEl.classList.add('text-emerald-700', 'font-bold');
+          updateAssetsHeaderStatus();
+        },
+
+        // Shared FileReader.readAsDataURL + URL.createObjectURL fallback loader for audio files
+        readAudioFile(file, urlSlotKey, onLoaded, onError) {
+          const trySource = (src, isFallback = false) => {
+            const audio = new Audio();
+            audio.preload = 'auto';
+            let settled = false;
+
+            const doneOk = () => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(guard);
+              audio.onloadedmetadata = null;
+              audio.oncanplay = null;
+              audio.onerror = null;
+              onLoaded(audio);
+            };
+
+            const doneErr = () => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(guard);
+              audio.onloadedmetadata = null;
+              audio.oncanplay = null;
+              audio.onerror = null;
+
+              if (!isFallback) {
+                try {
+                  if (this[urlSlotKey]) URL.revokeObjectURL(this[urlSlotKey]);
+                  this[urlSlotKey] = URL.createObjectURL(file);
+                  trySource(this[urlSlotKey], true);
+                } catch (e) {
+                  onError('Could not load this audio file. Try an MP3 or WAV file.');
+                }
+              } else {
+                onError('Unsupported audio format. Please pick a valid MP3, WAV, or M4A file.');
+              }
+            };
+
+            const guard = setTimeout(() => {
+              if (!settled) doneOk();
+            }, 2500);
+
+            audio.onloadedmetadata = doneOk;
+            audio.oncanplay = doneOk;
+            audio.onerror = doneErr;
+            audio.src = src;
+            try {
+              audio.load();
+            } catch (e) {
+              doneErr();
+            }
+          };
+
+          try {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              if (e.target && typeof e.target.result === 'string') {
+                trySource(e.target.result, false);
+              }
+            };
+            reader.onerror = () => {
+              if (this[urlSlotKey]) URL.revokeObjectURL(this[urlSlotKey]);
+              this[urlSlotKey] = URL.createObjectURL(file);
+              trySource(this[urlSlotKey], true);
+            };
+            reader.readAsDataURL(file);
+          } catch (err) {
+            try {
+              if (this[urlSlotKey]) URL.revokeObjectURL(this[urlSlotKey]);
+              this[urlSlotKey] = URL.createObjectURL(file);
+              trySource(this[urlSlotKey], true);
+            } catch (e) {
+              onError('Could not read audio file in this browser.');
+            }
+          }
+        },
+
+        loadHitFromFile(file) {
+          if (!file) return;
+          this.hitUserUploaded = true;
+          this.stopHitAudio();
+          setAudioFeedback('Loading hit audio...', 'info');
+
+          this.readAudioFile(
+            file,
+            'hitObjectUrl',
+            (audio) => {
+              this.attachHitAudio(audio, file.name);
+              setAudioFeedback('Hit audio ready! Tap "Test 6s" to preview.', 'success');
+              showToast('Custom 6s hit audio ready!');
+            },
+            (errMsg) => setAudioFeedback(errMsg, 'error')
+          );
+        },
+
+        loadBuzzFromFile(file) {
+          if (!file) return;
+          this.buzzUserUploaded = true;
+          this.stopBuzzTest();
+          setAudioFeedback('Loading mosquito buzz loop...', 'info');
+
+          this.readAudioFile(
+            file,
+            'buzzObjectUrl',
+            (audio) => {
+              this.attachBuzzAudio(audio, file.name);
+              setAudioFeedback('Mosquito buzz ready! Tap "Test Buzz" to preview.', 'success');
+              showToast('Custom machhar buzz loop ready!');
+            },
+            (errMsg) => setAudioFeedback(errMsg, 'error')
+          );
+        },
+
+        /* ---------- Test Button UI Updates ---------- */
+        updateHitTestUI() {
+          const active = this.isPlayingHit || this.isPlayingHitFallbackTest;
+          testAudioLabel.textContent = active ? '⏹ Stop' : '▶ Test 6s';
+          if (active) {
+            btnTestAudio.classList.remove('bg-orange-500', 'hover:bg-orange-400');
+            btnTestAudio.classList.add('bg-red-500', 'hover:bg-red-400');
+          } else {
+            btnTestAudio.classList.remove('bg-red-500', 'hover:bg-red-400');
+            btnTestAudio.classList.add('bg-orange-500', 'hover:bg-orange-400');
+          }
+        },
+
+        updateBuzzTestUI() {
+          testBuzzLabel.textContent = this.isTestingBuzz ? '⏹ Stop' : '▶ Test Buzz';
+          if (this.isTestingBuzz) {
+            btnTestBuzz.classList.remove('bg-amber-500', 'hover:bg-amber-400');
+            btnTestBuzz.classList.add('bg-red-500', 'hover:bg-red-400');
+          } else {
+            btnTestBuzz.classList.remove('bg-red-500', 'hover:bg-red-400');
+            btnTestBuzz.classList.add('bg-amber-500', 'hover:bg-amber-400');
+          }
+        },
+
+        stopProgressTracker() {
+          clearInterval(this.hitProgressInterval);
+          this.hitProgressInterval = null;
+          audioProgressWrap.classList.add('hidden');
+          audioProgressBar.style.width = '0%';
+          audioProgressTime.textContent = '0.0s / 6.0s';
+        },
+
+        startProgressTracker(showUI = false, modeLabel = 'Playing hit clip (6s cap)', maxDur = MAX_AUDIO_SECONDS) {
+          clearInterval(this.hitProgressInterval);
+          this.hitPlayStartedAt = performance.now();
+
+          if (showUI) {
+            audioProgressMode.textContent = modeLabel;
+            audioProgressWrap.classList.remove('hidden');
+          }
+
+          this.hitProgressInterval = setInterval(() => {
+            let elapsed = (performance.now() - this.hitPlayStartedAt) / 1000;
+            if (this.isPlayingHit && this.hitAudio && !isNaN(this.hitAudio.currentTime)) {
+              elapsed = Math.max(elapsed, this.hitAudio.currentTime);
+            }
+            const clamped = Math.min(elapsed, maxDur);
+            if (showUI) {
+              const pct = Math.min(100, (clamped / maxDur) * 100);
+              audioProgressBar.style.width = pct.toFixed(1) + '%';
+              audioProgressTime.textContent = `${clamped.toFixed(1)}s / ${maxDur.toFixed(1)}s`;
+            }
+            if (elapsed >= maxDur) {
+              this.stopHitAudio();
+            }
+          }, 50);
+        },
+
+        /* ---------- Hit Reaction Audio Control (Strict 6.0s Cap) ---------- */
+        stopHitAudio() {
+          clearTimeout(this.hitStopTimer);
+          this.hitStopTimer = null;
+          this.isPlayingHit = false;
+          this.isPlayingHitFallbackTest = false;
+          if (this.hitAudio) {
+            try {
+              this.hitAudio.pause();
+              this.hitAudio.currentTime = 0;
+            } catch (e) {}
+          }
+          this.stopProgressTracker();
+          this.updateHitTestUI();
+          // Immediately evaluate whether mosquito buzz should resume
+          this.syncGameplayBuzz();
+        },
+
+        playHitReaction({ ignoreMute = false, showProgress = false } = {}) {
+          if (state.muted && !ignoreMute) return;
+
+          // Pause/duck mosquito buzz while hit clip plays so the two never clash
+          this.pauseBuzzForHit();
+
+          if (this.hitAudio && this.hitAudioReady) {
+            this.stopHitAudio();
+            try {
+              this.hitAudio.currentTime = 0;
+              this.hitAudio.volume = 1.0;
+              this.isPlayingHit = true;
+              this.updateHitTestUI();
+              this.startProgressTracker(showProgress, 'Playing custom hit audio (6s cap)', MAX_AUDIO_SECONDS);
+
+              // Hard 6000ms timer safeguard
+              this.hitStopTimer = setTimeout(() => {
+                this.stopHitAudio();
+              }, MAX_AUDIO_SECONDS * 1000);
+
+              const playPromise = this.hitAudio.play();
+              if (playPromise && typeof playPromise.catch === 'function') {
+                playPromise.catch((err) => {
+                  this.stopHitAudio();
+                  if (showProgress) {
+                    const reason = err && err.name === 'NotSupportedError'
+                      ? 'Audio format not supported by this browser.'
+                      : 'Playback was blocked by browser. Tap again to allow audio.';
+                    setAudioFeedback(reason, 'error');
+                  }
+                });
+              }
+            } catch (e) {
+              this.stopHitAudio();
+              if (showProgress) {
+                setAudioFeedback('Audio playback failed. Try another MP3 or WAV file.', 'error');
+              }
+            }
+          } else {
+            this.playFallbackVoiceEffect(ignoreMute);
+          }
+        },
+
+        toggleTestHitAudio() {
+          this.initContext();
+          this.stopBuzzTest();
+
+          if (this.isPlayingHit || this.isPlayingHitFallbackTest) {
+            this.stopHitAudio();
+            return;
+          }
+
+          if (this.hitAudio && this.hitAudioReady) {
+            setAudioFeedback('', 'info');
+            this.playHitReaction({ ignoreMute: true, showProgress: true });
+          } else {
+            this.isPlayingHitFallbackTest = true;
+            this.updateHitTestUI();
+            setAudioFeedback('Playing built-in slap + voice — choose your MP3 above to test custom hit audio.', 'info');
+            this.playSlapPop(true);
+            this.playFallbackVoiceEffect(true);
+            this.startProgressTracker(true, 'Built-in slap + comic voice demo', 1.4);
+            this.hitStopTimer = setTimeout(() => {
+              this.stopHitAudio();
+            }, 1400);
+          }
+        },
+
+        /* ---------- Mosquito Buzz Loop Control (Custom machhar.mp3 or Synth) ---------- */
+        pauseBuzzForHit() {
+          if (this.buzzAudio && !this.buzzAudio.paused) {
+            try {
+              this.buzzAudio.pause();
+            } catch (e) {}
+          }
+          this.buzzGameplayActive = false;
+          this.setSynthBuzz(false);
+        },
+
+        stopAllBuzz() {
+          this.isTestingBuzz = false;
+          this.buzzGameplayActive = false;
+          if (this.buzzAudio) {
+            try {
+              this.buzzAudio.pause();
+              this.buzzAudio.currentTime = 0;
+            } catch (e) {}
+          }
+          this.setSynthBuzz(false);
+          this.updateBuzzTestUI();
+        },
+
+        stopBuzzTest() {
+          if (!this.isTestingBuzz) return;
+          this.stopAllBuzz();
+        },
+
+        stopEverything() {
+          this.stopHitAudio();
+          this.stopAllBuzz();
+        },
+
+        // Called every frame / on state transitions to keep buzz synced cleanly
+        syncGameplayBuzz() {
+          const shouldBuzz =
+            state.screen === 'playing' &&
+            !state.muted &&
+            mosquito.alive &&
+            !this.isPlayingHit;
+
+          if (shouldBuzz) {
+            if (this.buzzAudio && this.buzzAudioReady) {
+              this.setSynthBuzz(false);
+              if (!this.buzzGameplayActive || this.buzzAudio.paused) {
+                this.buzzGameplayActive = true;
+                this.buzzAudio.loop = true;
+                this.buzzAudio.volume = 0.65;
+                try {
+                  const p = this.buzzAudio.play();
+                  if (p && typeof p.catch === 'function') {
+                    p.catch(() => { this.buzzGameplayActive = false; });
+                  }
+                } catch (e) {
+                  this.buzzGameplayActive = false;
+                }
+              }
+            } else {
+              this.buzzGameplayActive = true;
+              this.setSynthBuzz(true);
+            }
+          } else {
+            if (this.buzzGameplayActive || this.synthBuzzActive) {
+              this.buzzGameplayActive = false;
+              if (this.buzzAudio && !this.isTestingBuzz && !this.buzzAudio.paused) {
+                try {
+                  this.buzzAudio.pause();
+                } catch (e) {}
+              }
+              if (!this.isTestingBuzz) {
+                this.setSynthBuzz(false);
+              }
+            }
+          }
+        },
+
+        toggleTestBuzzAudio() {
+          this.initContext();
+          this.stopHitAudio();
+
+          if (this.isTestingBuzz) {
+            this.stopBuzzTest();
+            return;
+          }
+
+          this.isTestingBuzz = true;
+          this.updateBuzzTestUI();
+
+          if (this.buzzAudio && this.buzzAudioReady) {
+            setAudioFeedback('Looping your custom mosquito buzz — tap Stop when done.', 'success');
+            try {
+              this.buzzAudio.loop = true;
+              this.buzzAudio.currentTime = 0;
+              this.buzzAudio.volume = 0.75;
+              const p = this.buzzAudio.play();
+              if (p && typeof p.catch === 'function') {
+                p.catch(() => {
+                  this.stopBuzzTest();
+                  setAudioFeedback('Playback blocked by browser. Tap "Test Buzz" again.', 'error');
+                });
+              }
+            } catch (e) {
+              this.stopBuzzTest();
+              setAudioFeedback('Could not play buzz audio file.', 'error');
+            }
+          } else {
+            setAudioFeedback('Playing built-in synth buzz — choose machhar.mp3 above to test your custom buzz.', 'info');
+            this.setSynthBuzz(true, true);
+          }
+        },
+
+        /* ---------- Built-in Web Audio Synthesizers ---------- */
+        setSynthBuzz(active, ignoreMute = false) {
+          const shouldRun = active && (!state.muted || ignoreMute);
+          if (shouldRun && !this.synthBuzzActive) {
+            this.initContext();
+            if (!this.ctx) return;
+            try {
+              const osc = this.ctx.createOscillator();
+              const lfo = this.ctx.createOscillator();
+              const lfoGain = this.ctx.createGain();
+              const filter = this.ctx.createBiquadFilter();
+              const gain = this.ctx.createGain();
+
+              osc.type = 'sawtooth';
+              osc.frequency.value = 395;
+
+              lfo.frequency.value = 28;
+              lfoGain.gain.value = 24;
+              lfo.connect(lfoGain);
+              lfoGain.connect(osc.frequency);
+
+              filter.type = 'bandpass';
+              filter.frequency.value = 1180;
+              filter.Q.value = 2.6;
+
+              gain.gain.value = 0.025;
+
+              osc.connect(filter);
+              filter.connect(gain);
+              gain.connect(this.ctx.destination);
+
+              osc.start();
+              lfo.start();
+
+              this.synthBuzzOsc = osc;
+              this.synthBuzzLfo = lfo;
+              this.synthBuzzGain = gain;
+              this.synthBuzzActive = true;
+            } catch (e) {}
+          } else if (!shouldRun && this.synthBuzzActive) {
+            try {
+              if (this.synthBuzzOsc) this.synthBuzzOsc.stop();
+              if (this.synthBuzzLfo) this.synthBuzzLfo.stop();
+            } catch (e) {}
+            this.synthBuzzOsc = null;
+            this.synthBuzzLfo = null;
+            this.synthBuzzGain = null;
+            this.synthBuzzActive = false;
+          }
+        },
+
+        playSlapPop(ignoreMute = false) {
+          if (state.muted && !ignoreMute) return;
+          this.initContext();
+          if (!this.ctx) return;
+
+          try {
+            const now = this.ctx.currentTime;
+            const bufferSize = Math.floor(this.ctx.sampleRate * 0.09);
+            const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+              data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.25));
+            }
+            const noise = this.ctx.createBufferSource();
+            noise.buffer = buffer;
+
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(1400, now);
+
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(0.45, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.09);
+
+            noise.connect(filter);
+            filter.connect(gain);
+            gain.connect(this.ctx.destination);
+            noise.start(now);
+
+            const osc = this.ctx.createOscillator();
+            const oscGain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(420, now);
+            osc.frequency.exponentialRampToValueAtTime(110, now + 0.11);
+            oscGain.gain.setValueAtTime(0.35, now);
+            oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.11);
+            osc.connect(oscGain);
+            oscGain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.12);
+          } catch (e) {}
+        },
+
+        playFallbackVoiceEffect(ignoreMute = false) {
+          if (state.muted && !ignoreMute) return;
+          this.initContext();
+          if (!this.ctx) return;
+
+          try {
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const mod = this.ctx.createOscillator();
+            const modGain = this.ctx.createGain();
+            const gain = this.ctx.createGain();
+
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(220, now);
+            osc.frequency.exponentialRampToValueAtTime(340, now + 0.18);
+            osc.frequency.exponentialRampToValueAtTime(160, now + 0.55);
+
+            mod.frequency.setValueAtTime(16, now);
+            modGain.gain.setValueAtTime(18, now);
+            mod.connect(modGain);
+            modGain.connect(osc.frequency);
+
+            const formant = this.ctx.createBiquadFilter();
+            formant.type = 'bandpass';
+            formant.frequency.setValueAtTime(900, now);
+            formant.Q.setValueAtTime(3.2, now);
+
+            gain.gain.setValueAtTime(0.001, now);
+            gain.gain.linearRampToValueAtTime(0.28, now + 0.04);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.62);
+
+            osc.connect(formant);
+            formant.connect(gain);
+            gain.connect(this.ctx.destination);
+
+            osc.start(now);
+            mod.start(now);
+            osc.stop(now + 0.65);
+            mod.stop(now + 0.65);
+          } catch (e) {}
+        },
+
+        playWhoosh(isMiss = false) {
+          if (state.muted) return;
+          this.initContext();
+          if (!this.ctx) return;
+
+          try {
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sine';
+            if (isMiss) {
+              osc.frequency.setValueAtTime(260, now);
+              osc.frequency.exponentialRampToValueAtTime(120, now + 0.16);
+              gain.gain.setValueAtTime(0.14, now);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+            } else {
+              osc.frequency.setValueAtTime(520, now);
+              osc.frequency.exponentialRampToValueAtTime(220, now + 0.08);
+              gain.gain.setValueAtTime(0.1, now);
+              gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+            }
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.18);
+          } catch (e) {}
+        }
+      };
+
+      /* =====================================================================
+         4. WORLD, ENTITIES & PARTICLES
+      ===================================================================== */
+      const world = {
+        originX: 195,
+        originY: 590,
+        aimAngle: -Math.PI / 2,
+        sweepTime: 0,
+        headShakeTimer: 0,
+        eqPhase: 0,
+        snapBeam: {
+          active: false,
+          x: 0,
+          y: 0,
+          timer: 0,
+          maxTimer: 0.14
+        }
+      };
+
+      const mosquito = {
+        alive: false,
+        x: 195,
+        y: 220,
+        vx: 140,
+        vy: 30,
+        radius: 26,
+        wingPhase: 0,
+        wobblePhase: 0,
+        respawnTimer: 0.35,
+        facing: 1
+      };
+
+      const projectiles = [];
+      const particles = [];
+      const burstRings = [];
+      const floatingTexts = [];
+
+      function getMosquitoSpeed() {
+        return Math.min(440, 145 + state.score * 16);
+      }
+
+      function spawnMosquito() {
+        const margin = 46;
+        const fromLeft = Math.random() < 0.5;
+        const speed = getMosquitoSpeed();
+
+        mosquito.alive = true;
+        mosquito.x = fromLeft ? margin : state.width - margin;
+        mosquito.y = state.height * (0.19 + Math.random() * 0.25);
+        mosquito.vx = (fromLeft ? 1 : -1) * speed;
+        mosquito.vy = (Math.random() - 0.5) * 90;
+        mosquito.facing = fromLeft ? 1 : -1;
+        mosquito.wobblePhase = Math.random() * Math.PI * 2;
+      }
+
+      function updateOrigin() {
+        const scale = Math.min(state.width / 390, 1.15);
+        world.originX = state.width * 0.5 + 2 * scale;
+        world.originY = state.height * 0.80 - 16 * scale;
+      }
+
+      function aimTowardPoint(px, py) {
+        if (state.aimStyle !== 'point') return;
+        const dx = px - world.originX;
+        const dy = py - world.originY;
+        let angle = Math.atan2(dy, dx);
+        const minAngle = -Math.PI + 0.22;
+        const maxAngle = -0.22;
+        if (angle > 0) {
+          angle = dx < 0 ? minAngle : maxAngle;
+        }
+        world.aimAngle = Math.max(minAngle, Math.min(maxAngle, angle));
+      }
+
+      function fireProjectile() {
+        if (state.screen !== 'playing') return;
+        if (projectiles.length >= 2) return;
+
+        state.hasShotOnce = true;
+        state.shotsFired += 1;
+        hudHintEl.classList.add('hidden');
+
+        const speed = 1350;
+        projectiles.push({
+          x: world.originX,
+          y: world.originY,
+          prevX: world.originX,
+          prevY: world.originY,
+          vx: Math.cos(world.aimAngle) * speed,
+          vy: Math.sin(world.aimAngle) * speed,
+          radius: 9
+        });
+        audioEngine.playWhoosh(false);
+      }
+
+      function distToSegment(px, py, x1, y1, x2, y2) {
+        const l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1);
+        if (l2 === 0) return Math.hypot(px - x1, py - y1);
+        let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+        t = Math.max(0, Math.min(1, t));
+        return Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1)));
+      }
+
+      function spawnHitEffects(x, y) {
+        burstRings.push({
+          x,
+          y,
+          radius: 10,
+          maxRadius: 56,
+          alpha: 1
+        });
+
+        const colors = ['#f97316', '#ef4444', '#facc15', '#22c55e', '#3b82f6', '#ec4899', '#0f172a'];
+        for (let i = 0; i < 24; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const spd = 90 + Math.random() * 270;
+          particles.push({
+            x,
+            y,
+            vx: Math.cos(angle) * spd,
+            vy: Math.sin(angle) * spd - 50,
+            size: 3.5 + Math.random() * 4.5,
+            color: colors[i % colors.length],
+            alpha: 1,
+            gravity: 520,
+            shape: Math.random() < 0.5 ? 'circle' : 'rect',
+            rot: Math.random() * Math.PI
+          });
+        }
+
+        floatingTexts.push({
+          x,
+          y: y - 12,
+          text: state.combo >= 2 ? `+1  🔥x${state.combo}` : '+1',
+          alpha: 1,
+          vy: -82
+        });
+
+        world.snapBeam.active = true;
+        world.snapBeam.x = x;
+        world.snapBeam.y = y;
+        world.snapBeam.timer = world.snapBeam.maxTimer;
+
+        world.headShakeTimer = 0.45;
+      }
+
+      function onMosquitoHit(hitX, hitY) {
+        mosquito.alive = false;
+        mosquito.respawnTimer = 0.42;
+
+        state.hitsLanded += 1;
+        state.score += 1;
+        state.combo += 1;
+        if (state.score > state.bestScore) {
+          state.bestScore = state.score;
+          state.isNewBest = true;
+          try {
+            localStorage.setItem(STORAGE_KEY_BEST, String(state.bestScore));
+          } catch (e) {}
+        }
+
+        updateScoreHUD(true);
+        spawnHitEffects(hitX, hitY);
+        audioEngine.playSlapPop();
+        audioEngine.playHitReaction({ ignoreMute: false, showProgress: false });
+      }
+
+      function onProjectileMiss() {
+        state.combo = 0;
+        updateScoreHUD(false);
+        audioEngine.playWhoosh(true);
+        if (state.mode === 'challenge') {
+          state.lives = Math.max(0, state.lives - 1);
+          renderLivesHUD();
+          if (state.lives <= 0) {
+            triggerGameOver();
+          }
+        }
+      }
+
+      /* =====================================================================
+         5. HUD & SCREEN NAVIGATION
+      ===================================================================== */
+      function updateScoreHUD(animatePop = false) {
+        hudScoreEl.textContent = String(state.score);
+        hudBestEl.textContent = `BEST ${state.bestScore}`;
+        landingBestEl.textContent = String(state.bestScore);
+
+        if (state.combo >= 2 && state.screen === 'playing') {
+          hudComboEl.textContent = `🔥 x${state.combo} COMBO`;
+          hudComboEl.classList.remove('hidden');
+        } else {
+          hudComboEl.classList.add('hidden');
+        }
+
+        if (animatePop) {
+          hudScoreEl.classList.remove('score-pop');
+          void hudScoreEl.offsetWidth;
+          hudScoreEl.classList.add('score-pop');
+        }
+      }
+
+      function renderLivesHUD() {
+        if (state.mode !== 'challenge') {
+          hudLivesEl.classList.add('hidden');
+          return;
+        }
+        hudLivesEl.classList.remove('hidden');
+        let html = '';
+        for (let i = 0; i < state.maxLives; i++) {
+          html += i < state.lives ? '<span>❤️</span>' : '<span class="opacity-25">🖤</span>';
+        }
+        hudLivesEl.innerHTML = html;
+      }
+
+      function updateMuteUI() {
+        muteIconEl.textContent = state.muted ? '🔇' : '🔊';
+        btnMutePause.textContent = state.muted ? '🔇 Sound: OFF' : '🔊 Sound: ON';
+        if (state.muted) {
+          audioEngine.stopEverything();
+        } else {
+          audioEngine.syncGameplayBuzz();
+        }
+      }
+
+      function startGame() {
+        audioEngine.stopEverything();
+        audioEngine.unlockAll();
+
+        state.screen = 'playing';
+        state.score = 0;
+        state.combo = 0;
+        state.shotsFired = 0;
+        state.hitsLanded = 0;
+        state.isNewBest = false;
+        state.lives = state.maxLives;
+        state.hasShotOnce = false;
+
+        projectiles.length = 0;
+        particles.length = 0;
+        burstRings.length = 0;
+        floatingTexts.length = 0;
+        world.aimAngle = -Math.PI / 2;
+        world.sweepTime = 0;
+        world.headShakeTimer = 0;
+        world.snapBeam.active = false;
+
+        spawnMosquito();
+
+        landingScreen.classList.add('hidden');
+        pauseModal.classList.add('hidden');
+        gameoverModal.classList.add('hidden');
+        hudEl.classList.remove('hidden');
+        hudHintEl.classList.remove('hidden');
+        hudHintEl.firstElementChild.textContent =
+          state.aimStyle === 'sweep'
+            ? 'Tap anywhere or press Space to strike!'
+            : 'Aim & tap anywhere to swat the machar!';
+
+        updateScoreHUD(false);
+        renderLivesHUD();
+        audioEngine.syncGameplayBuzz();
+      }
+
+      function pauseGame() {
+        if (state.screen !== 'playing') return;
+        state.screen = 'paused';
+        audioEngine.stopAllBuzz();
+        pauseModal.classList.remove('hidden');
+      }
+
+      function resumeGame() {
+        if (state.screen !== 'paused') return;
+        state.screen = 'playing';
+        pauseModal.classList.add('hidden');
+        audioEngine.syncGameplayBuzz();
+      }
+
+      function returnToMenu() {
+        state.screen = 'landing';
+        audioEngine.stopEverything();
+        hudEl.classList.add('hidden');
+        hudHintEl.classList.add('hidden');
+        pauseModal.classList.add('hidden');
+        gameoverModal.classList.add('hidden');
+        landingScreen.classList.remove('hidden');
+        updateScoreHUD(false);
+      }
+
+      function triggerGameOver() {
+        state.screen = 'gameover';
+        audioEngine.stopAllBuzz();
+        hudHintEl.classList.add('hidden');
+
+        const accuracy = state.shotsFired > 0
+          ? Math.round((state.hitsLanded / state.shotsFired) * 100)
+          : 0;
+
+        goScoreEl.textContent = String(state.score);
+        goBestEl.textContent = String(state.bestScore);
+        goAccuracyEl.textContent = `${accuracy}%`;
+        if (state.isNewBest && state.score > 0) {
+          goNewBestEl.classList.remove('hidden');
+        } else {
+          goNewBestEl.classList.add('hidden');
+        }
+        gameoverModal.classList.remove('hidden');
+      }
+
+      /* =====================================================================
+         6. GAME UPDATE LOOP
+      ===================================================================== */
+      function update(dt) {
+        if (state.screen !== 'playing') {
+          if (!audioEngine.isTestingBuzz) {
+            audioEngine.syncGameplayBuzz();
+          }
+          return;
+        }
+
+        // 1. Auto-Sweep pendulum aiming
+        if (state.aimStyle === 'sweep') {
+          const sweepSpeed = 1.65 + Math.min(state.score * 0.06, 1.3);
+          world.sweepTime += dt * sweepSpeed;
+          world.aimAngle = -Math.PI / 2 + Math.sin(world.sweepTime) * 1.12;
+        }
+
+        // 2. Sleeper reaction timers
+        if (world.headShakeTimer > 0) {
+          world.headShakeTimer = Math.max(0, world.headShakeTimer - dt);
+        }
+        if (audioEngine.isPlayingHit || world.headShakeTimer > 0) {
+          world.eqPhase += dt * 15;
+        }
+        if (world.snapBeam.active) {
+          world.snapBeam.timer -= dt;
+          if (world.snapBeam.timer <= 0) world.snapBeam.active = false;
+        }
+
+        // 3. Mosquito movement & respawning
+        if (mosquito.alive) {
+          mosquito.wingPhase += dt * 42;
+          mosquito.wobblePhase += dt * 5.2;
+
+          mosquito.x += mosquito.vx * dt;
+          mosquito.y += (mosquito.vy + Math.sin(mosquito.wobblePhase) * 70) * dt;
+
+          const padX = 36;
+          const minY = Math.max(105, state.height * 0.14);
+          const maxY = state.height * 0.50;
+
+          if (mosquito.x < padX) {
+            mosquito.x = padX;
+            mosquito.vx = Math.abs(mosquito.vx);
+            mosquito.facing = 1;
+          } else if (mosquito.x > state.width - padX) {
+            mosquito.x = state.width - padX;
+            mosquito.vx = -Math.abs(mosquito.vx);
+            mosquito.facing = -1;
+          }
+
+          if (mosquito.y < minY) {
+            mosquito.y = minY;
+            mosquito.vy = Math.abs(mosquito.vy) + 20;
+          } else if (mosquito.y > maxY) {
+            mosquito.y = maxY;
+            mosquito.vy = -Math.abs(mosquito.vy) - 20;
+          }
+
+          if (Math.random() < dt * (0.4 + state.score * 0.04)) {
+            mosquito.vy = (Math.random() - 0.5) * 140;
+          }
+        } else {
+          mosquito.respawnTimer -= dt;
+          if (mosquito.respawnTimer <= 0) {
+            spawnMosquito();
+          }
+        }
+
+        // Keep mosquito buzz synchronized (automatically ducks during hit audio)
+        audioEngine.syncGameplayBuzz();
+
+        // 4. Projectiles & Swept Collision Detection
+        for (let i = projectiles.length - 1; i >= 0; i--) {
+          const p = projectiles[i];
+          p.prevX = p.x;
+          p.prevY = p.y;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+
+          if (mosquito.alive) {
+            const dist = distToSegment(mosquito.x, mosquito.y, p.prevX, p.prevY, p.x, p.y);
+            if (dist <= mosquito.radius + p.radius + 6) {
+              projectiles.splice(i, 1);
+              onMosquitoHit(mosquito.x, mosquito.y);
+              continue;
+            }
+          }
+
+          if (p.x < -30 || p.x > state.width + 30 || p.y < -30 || p.y > state.height + 30) {
+            projectiles.splice(i, 1);
+            onProjectileMiss();
+          }
+        }
+
+        // 5. Burst rings
+        for (let i = burstRings.length - 1; i >= 0; i--) {
+          const r = burstRings[i];
+          r.radius += (r.maxRadius - r.radius) * Math.min(1, dt * 14);
+          r.alpha -= dt * 3.1;
+          if (r.alpha <= 0) burstRings.splice(i, 1);
+        }
+
+        // 6. Confetti particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+          const pt = particles[i];
+          pt.vy += pt.gravity * dt;
+          pt.x += pt.vx * dt;
+          pt.y += pt.vy * dt;
+          pt.rot += dt * 7;
+          pt.alpha -= dt * 1.65;
+          if (pt.alpha <= 0) particles.splice(i, 1);
+        }
+
+        // 7. Floating "+1" popups
+        for (let i = floatingTexts.length - 1; i >= 0; i--) {
+          const ft = floatingTexts[i];
+          ft.y += ft.vy * dt;
+          ft.alpha -= dt * 1.35;
+          if (ft.alpha <= 0) floatingTexts.splice(i, 1);
+        }
+      }
+
+      /* =====================================================================
+         7. CANVAS RENDERING (BEDROOM, SLEEPER, AIM LINE, MOSQUITO, FX)
+      ===================================================================== */
+      function drawFallbackCartoonFace(rx, ry) {
+        ctx.fillStyle = '#fde68a';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 3.2;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Hair swoop
+        ctx.fillStyle = '#451a03';
+        ctx.beginPath();
+        ctx.arc(0, -10, rx * 0.94, Math.PI * 1.05, Math.PI * 1.95);
+        ctx.fill();
+
+        // White goatee beard
+        ctx.fillStyle = '#f8fafc';
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.ellipse(0, 17, 13, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Retro glasses
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.arc(-9, -2, 7.5, 0, Math.PI * 2);
+        ctx.arc(9, -2, 7.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(-1.5, -2);
+        ctx.lineTo(1.5, -2);
+        ctx.stroke();
+
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.arc(-8.5, -4, 2.3, 0, Math.PI * 2);
+        ctx.arc(9.5, -4, 2.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Mouth reacts on hit / audio
+        ctx.fillStyle = '#dc2626';
+        ctx.beginPath();
+        if (world.headShakeTimer > 0 || audioEngine.isPlayingHit) {
+          ctx.ellipse(0, 15, 6, 4.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        } else {
+          ctx.moveTo(-5, 15);
+          ctx.quadraticCurveTo(0, 12, 5, 15);
+          ctx.stroke();
+        }
+      }
+
+      function drawAudioSpeechBubble(bx, by, phase, isPopping) {
+        ctx.save();
+        const popScale = isPopping ? 1.1 + Math.sin(phase * 1.4) * 0.06 : 1;
+        ctx.translate(bx, by);
+        ctx.scale(popScale, popScale);
+
+        const w = 60;
+        const h = 28;
+        ctx.fillStyle = '#fff7ed';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2.6;
+
+        ctx.beginPath();
+        ctx.roundRect(-w / 2, -h / 2, w, h, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        // Tail
+        ctx.beginPath();
+        ctx.moveTo(-6, h / 2 - 1);
+        ctx.lineTo(0, h / 2 + 9);
+        ctx.lineTo(8, h / 2 - 1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#fff7ed';
+        ctx.fillRect(-5, h / 2 - 3, 12, 4);
+
+        // 5 animated equalizer bars
+        const barCount = 5;
+        const barW = 4.5;
+        const gap = 3.5;
+        const totalW = barCount * barW + (barCount - 1) * gap;
+        const startX = -totalW / 2;
+
+        for (let i = 0; i < barCount; i++) {
+          const wave = Math.abs(Math.sin(phase + i * 1.15));
+          const barH = 5 + wave * 13;
+          ctx.fillStyle = i % 2 === 0 ? '#f97316' : '#ef4444';
+          ctx.beginPath();
+          ctx.roundRect(startX + i * (barW + gap), -barH / 2, barW, barH, 2.5);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      function drawBedAndSleeper() {
+        const cx = state.width * 0.5;
+        const baseY = state.height * 0.80;
+        const scale = Math.min(state.width / 390, 1.15);
+
+        let shakeX = 0;
+        let shakeY = 0;
+        let headBounce = 0;
+        let headScale = 1;
+
+        if (world.headShakeTimer > 0) {
+          const t = world.headShakeTimer / 0.45;
+          shakeX = Math.sin(t * Math.PI * 6) * 5.5 * t;
+          shakeY = Math.cos(t * Math.PI * 4) * 3 * t;
+          headBounce = Math.sin(t * Math.PI * 4) * 0.24 * t;
+          headScale = 1 + Math.sin(t * Math.PI) * 0.22;
+        } else if (audioEngine.isPlayingHit && !state.muted) {
+          headBounce = Math.sin(world.eqPhase * 0.85) * 0.07;
+          headScale = 1 + Math.abs(Math.sin(world.eqPhase * 0.7)) * 0.06;
+        }
+
+        ctx.save();
+        ctx.translate(cx + shakeX, baseY + shakeY);
+        ctx.scale(scale, scale);
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+
+        // Floor shadow
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.08)';
+        ctx.beginPath();
+        ctx.ellipse(2, 66, 148, 18, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Bed Legs
+        ctx.fillStyle = '#1e293b';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 3.5;
+        ctx.fillRect(-132, 26, 12, 34);
+        ctx.strokeRect(-132, 26, 12, 34);
+        ctx.fillRect(102, 36, 12, 32);
+        ctx.strokeRect(102, 36, 12, 32);
+
+        // Headboard
+        ctx.fillStyle = '#e2e8f0';
+        ctx.beginPath();
+        ctx.moveTo(-136, 26);
+        ctx.lineTo(-136, -42);
+        ctx.lineTo(-56, -74);
+        ctx.lineTo(-56, -10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(-124, 14);
+        ctx.lineTo(-124, -34);
+        ctx.lineTo(-68, -56);
+        ctx.lineTo(-68, -10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Mattress Top
+        ctx.fillStyle = '#cbd5e1';
+        ctx.beginPath();
+        ctx.moveTo(-132, 6);
+        ctx.lineTo(-56, -26);
+        ctx.lineTo(132, 8);
+        ctx.lineTo(74, 44);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Mattress Front Side
+        ctx.fillStyle = '#94a3b8';
+        ctx.beginPath();
+        ctx.moveTo(-132, 6);
+        ctx.lineTo(74, 44);
+        ctx.lineTo(74, 64);
+        ctx.lineTo(-132, 26);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Mattress Right Foot Side
+        ctx.fillStyle = '#64748b';
+        ctx.beginPath();
+        ctx.moveTo(74, 44);
+        ctx.lineTo(132, 8);
+        ctx.lineTo(132, 28);
+        ctx.lineTo(74, 64);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Pillow
+        ctx.fillStyle = '#f8fafc';
+        ctx.beginPath();
+        ctx.ellipse(-86, -16, 32, 18, -0.35, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Blanket fold
+        ctx.fillStyle = '#475569';
+        ctx.beginPath();
+        ctx.moveTo(-112, 10);
+        ctx.quadraticCurveTo(-76, -8, -42, 4);
+        ctx.lineTo(-42, 32);
+        ctx.lineTo(-112, 20);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Stick-Figure Body
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 4.2;
+
+        ctx.beginPath();
+        ctx.moveTo(-48, -10);
+        ctx.lineTo(14, 2);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(14, 2);
+        ctx.lineTo(66, 4);
+        ctx.lineTo(78, 12);
+        ctx.moveTo(14, 2);
+        ctx.lineTo(58, 18);
+        ctx.lineTo(70, 26);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(-26, -6);
+        ctx.lineTo(-6, -18);
+        ctx.lineTo(2, -16);
+        ctx.moveTo(-14, -4);
+        ctx.lineTo(10, -14);
+        ctx.lineTo(2, -16);
+        ctx.stroke();
+
+        // Sleeper's Head (Circularly Cropped Custom Photo or Cartoon Fallback)
+        ctx.save();
+        ctx.translate(-74, -22);
+        ctx.rotate(-0.16 + headBounce);
+        ctx.scale(headScale, headScale);
+        const headRx = 27;
+        const headRy = 30;
+
+        if (faceAsset.loaded && faceAsset.img) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.ellipse(0, 0, headRx, headRy, 0, 0, Math.PI * 2);
+          ctx.clip();
+
+          const img = faceAsset.img;
+          const imgRatio = img.width / img.height;
+          const targetW = headRx * 2.15;
+          const targetH = headRy * 2.15;
+          let drawW = targetW;
+          let drawH = targetH;
+          if (imgRatio > targetW / targetH) {
+            drawW = targetH * imgRatio;
+          } else {
+            drawH = targetW / imgRatio;
+          }
+          ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
+          ctx.restore();
+
+          ctx.beginPath();
+          ctx.ellipse(0, 0, headRx, headRy, 0, 0, Math.PI * 2);
+          ctx.strokeStyle = '#0f172a';
+          ctx.lineWidth = 3.5;
+          ctx.stroke();
+        } else {
+          drawFallbackCartoonFace(headRx, headRy);
+        }
+        ctx.restore();
+
+        // Comic Speech Bubble with live equalizer bars during hit reaction audio
+        if ((audioEngine.isPlayingHit || world.headShakeTimer > 0) && !state.muted) {
+          drawAudioSpeechBubble(-74, -76, world.eqPhase, world.headShakeTimer > 0);
+        }
+
+        ctx.restore();
+      }
+
+      function drawAimLine() {
+        if (state.screen !== 'playing') return;
+
+        const len = Math.max(state.width, state.height) * 1.1;
+        const endX = world.originX + Math.cos(world.aimAngle) * len;
+        const endY = world.originY + Math.sin(world.aimAngle) * len;
+
+        ctx.save();
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 3;
+        ctx.setLineDash([12, 10]);
+        ctx.beginPath();
+        ctx.moveTo(world.originX, world.originY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const reticleDist = 115;
+        const rx = world.originX + Math.cos(world.aimAngle) * reticleDist;
+        const ry = world.originY + Math.sin(world.aimAngle) * reticleDist;
+
+        ctx.beginPath();
+        ctx.arc(rx, ry, 11, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.fill();
+        ctx.lineWidth = 2.8;
+        ctx.strokeStyle = '#0f172a';
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(rx, ry, 3, 0, Math.PI * 2);
+        ctx.fillStyle = '#f97316';
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawSnapBeam() {
+        if (!world.snapBeam.active) return;
+        const alpha = world.snapBeam.timer / world.snapBeam.maxTimer;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = '#fb923c';
+        ctx.lineWidth = 7 * alpha + 2;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(world.originX, world.originY);
+        ctx.lineTo(world.snapBeam.x, world.snapBeam.y);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(world.originX, world.originY);
+        ctx.lineTo(world.snapBeam.x, world.snapBeam.y);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawMosquito() {
+        if (!mosquito.alive) return;
+
+        ctx.save();
+        ctx.translate(mosquito.x, mosquito.y);
+        ctx.scale(mosquito.facing, 1);
+
+        const wingAngle = Math.sin(mosquito.wingPhase) * 0.55;
+
+        // Translucent flapping wings
+        ctx.save();
+        ctx.rotate(-0.35 + wingAngle);
+        ctx.fillStyle = 'rgba(224, 242, 254, 0.85)';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(-4, -14, 15, 7, -0.25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.save();
+        ctx.rotate(0.25 - wingAngle);
+        ctx.fillStyle = 'rgba(240, 249, 255, 0.8)';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(5, -13, 13, 6, 0.25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+
+        // Dangling legs
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-6, 6); ctx.lineTo(-12, 16); ctx.lineTo(-17, 17);
+        ctx.moveTo(2, 7); ctx.lineTo(0, 18); ctx.lineTo(-4, 20);
+        ctx.moveTo(9, 6); ctx.lineTo(15, 16); ctx.lineTo(20, 17);
+        ctx.stroke();
+
+        // Striped red abdomen
+        ctx.fillStyle = '#ef4444';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.ellipse(-10, 2, 13, 7, -0.18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(-15, -3); ctx.lineTo(-13, 8);
+        ctx.moveTo(-9, -4); ctx.lineTo(-7, 8);
+        ctx.stroke();
+
+        // Thorax & Head
+        ctx.fillStyle = '#334155';
+        ctx.beginPath();
+        ctx.arc(4, 0, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#1e293b';
+        ctx.beginPath();
+        ctx.arc(13, -1, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        // Eye
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(14.5, -2.5, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#0f172a';
+        ctx.beginPath();
+        ctx.arc(15.2, -2.5, 1.1, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Proboscis
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(18, 0);
+        ctx.lineTo(31, 4);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+
+      function drawProjectiles() {
+        for (const p of projectiles) {
+          ctx.save();
+          ctx.strokeStyle = '#f97316';
+          ctx.lineWidth = 4;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(p.prevX, p.prevY);
+          ctx.lineTo(p.x, p.y);
+          ctx.stroke();
+
+          ctx.fillStyle = '#0f172a';
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 5.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      function drawEffects() {
+        for (const r of burstRings) {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, r.alpha);
+          ctx.strokeStyle = '#f59e0b';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        for (const pt of particles) {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, pt.alpha);
+          ctx.translate(pt.x, pt.y);
+          ctx.rotate(pt.rot);
+          ctx.fillStyle = pt.color;
+          if (pt.shape === 'circle') {
+            ctx.beginPath();
+            ctx.arc(0, 0, pt.size * 0.5, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.fillRect(-pt.size / 2, -pt.size / 2, pt.size, pt.size * 0.65);
+          }
+          ctx.restore();
+        }
+
+        for (const ft of floatingTexts) {
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, ft.alpha);
+          ctx.font = '800 22px Fredoka, Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = '#ffffff';
+          ctx.strokeText(ft.text, ft.x, ft.y);
+          ctx.fillStyle = '#ea580c';
+          ctx.fillText(ft.text, ft.x, ft.y);
+          ctx.restore();
+        }
+      }
+
+      function render() {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, state.width, state.height);
+
+        // Bedroom baseboard line
+        ctx.strokeStyle = '#f1f5f9';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, state.height * 0.78);
+        ctx.lineTo(state.width, state.height * 0.78);
+        ctx.stroke();
+
+        // Orange reference badge
+        if (state.screen === 'playing' || state.screen === 'paused') {
+          const badgeW = 166;
+          const badgeH = 26;
+          const bx = state.width * 0.5 - badgeW / 2;
+          const by = state.height * 0.58;
+          ctx.save();
+          ctx.fillStyle = '#f97316';
+          ctx.beginPath();
+          ctx.roundRect(bx, by, badgeW, badgeH, 6);
+          ctx.fill();
+          ctx.font = '700 13px Inter, sans-serif';
+          ctx.fillStyle = '#0f172a';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('Game: Hit Machar', state.width * 0.5, by + badgeH / 2 + 0.5);
+          ctx.restore();
+        }
+
+        drawAimLine();
+        drawSnapBeam();
+        drawBedAndSleeper();
+        drawMosquito();
+        drawProjectiles();
+        drawEffects();
+      }
+
+      /* =====================================================================
+         8. MAIN LOOP & RESPONSIVE CANVAS RESIZING
+      ===================================================================== */
+      let lastTime = 0;
+      function gameLoop(timestamp) {
+        if (!lastTime) lastTime = timestamp;
+        const dt = Math.min(0.05, (timestamp - lastTime) / 1000);
+        lastTime = timestamp;
+
+        update(dt);
+        render();
+        requestAnimationFrame(gameLoop);
+      }
+
+      function resizeCanvas() {
+        const rect = shell.getBoundingClientRect();
+        state.width = Math.max(280, rect.width);
+        state.height = Math.max(420, rect.height);
+        state.dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+        canvas.width = Math.round(state.width * state.dpr);
+        canvas.height = Math.round(state.height * state.dpr);
+        ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+        updateOrigin();
+      }
+
+      function getCanvasPoint(clientX, clientY) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: clientX - rect.left,
+          y: clientY - rect.top
+        };
+      }
+
+      /* =====================================================================
+         9. EVENT LISTENERS (POINTER, KEYBOARD, DRAG-AND-DROP, CONTROLS)
+      ===================================================================== */
+      canvas.addEventListener('pointermove', (e) => {
+        if (state.screen !== 'playing' || state.aimStyle !== 'point') return;
+        const pt = getCanvasPoint(e.clientX, e.clientY);
+        aimTowardPoint(pt.x, pt.y);
+      });
+
+      canvas.addEventListener('pointerdown', (e) => {
+        if (state.screen !== 'playing') return;
+        e.preventDefault();
+        audioEngine.unlockAll();
+        const pt = getCanvasPoint(e.clientX, e.clientY);
+        aimTowardPoint(pt.x, pt.y);
+        fireProjectile();
+      });
+
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' && state.screen === 'playing') {
+          e.preventDefault();
+          audioEngine.unlockAll();
+          fireProjectile();
+        } else if (e.code === 'Escape' || e.code === 'KeyP') {
+          if (state.screen === 'playing') pauseGame();
+          else if (state.screen === 'paused') resumeGame();
+        }
+      });
+
+      // Mode & Aim Toggle Styling
+      function setActivePill(activeBtn, inactiveBtn) {
+        activeBtn.classList.add('bg-white', 'text-slate-900', 'shadow-xs');
+        activeBtn.classList.remove('text-slate-500');
+        inactiveBtn.classList.remove('bg-white', 'text-slate-900', 'shadow-xs');
+        inactiveBtn.classList.add('text-slate-500');
+      }
+
+      btnModeEndless.addEventListener('click', () => {
+        state.mode = 'endless';
+        setActivePill(btnModeEndless, btnModeChallenge);
+      });
+
+      btnModeChallenge.addEventListener('click', () => {
+        state.mode = 'challenge';
+        setActivePill(btnModeChallenge, btnModeEndless);
+      });
+
+      btnAimPoint.addEventListener('click', () => {
+        state.aimStyle = 'point';
+        setActivePill(btnAimPoint, btnAimSweep);
+      });
+
+      btnAimSweep.addEventListener('click', () => {
+        state.aimStyle = 'sweep';
+        setActivePill(btnAimSweep, btnAimPoint);
+      });
+
+      // Expand/Collapse Custom Assets Panel
+      btnToggleAssets.addEventListener('click', () => {
+        state.userToggledAssets = true;
+        setAssetsPanelExpanded(!state.assetsExpanded);
+      });
+
+      // File Input Handlers
+      faceInput.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) faceAsset.loadFromFile(file);
+        e.target.value = '';
+      });
+
+      audioInput.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) audioEngine.loadHitFromFile(file);
+        e.target.value = '';
+      });
+
+      buzzInput.addEventListener('change', (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (file) audioEngine.loadBuzzFromFile(file);
+        e.target.value = '';
+      });
+
+      // Per-Slot & Card-Level Drag-and-Drop Support
+      function wireDropZone(el, targetHint) {
+        ['dragenter', 'dragover'].forEach((evt) => {
+          el.addEventListener(evt, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            el.classList.add('drop-active');
+          });
+        });
+
+        ['dragleave', 'drop'].forEach((evt) => {
+          el.addEventListener(evt, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            el.classList.remove('drop-active');
+          });
+        });
+
+        el.addEventListener('drop', (e) => {
+          const files = e.dataTransfer && e.dataTransfer.files;
+          if (!files || !files.length) return;
+
+          for (const file of files) {
+            const name = (file.name || '').toLowerCase();
+            const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp)$/.test(name);
+            const isAudio = file.type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|webm)$/.test(name);
+
+            if (isImage) {
+              faceAsset.loadFromFile(file);
+            } else if (isAudio) {
+              if (targetHint === 'buzz' || (targetHint === 'auto' && /(mach|buzz|mosquito)/.test(name))) {
+                audioEngine.loadBuzzFromFile(file);
+              } else {
+                audioEngine.loadHitFromFile(file);
+              }
+            } else {
+              showToast('Drop a JPG/PNG image or MP3/WAV audio file.');
+            }
+          }
+        });
+      }
+
+      wireDropZone(slotFace, 'face');
+      wireDropZone(slotHit, 'hit');
+      wireDropZone(slotBuzz, 'buzz');
+      wireDropZone(assetsDropzone, 'auto');
+
+      // Audio Test Buttons
+      btnTestAudio.addEventListener('click', () => audioEngine.toggleTestHitAudio());
+      btnTestBuzz.addEventListener('click', () => audioEngine.toggleTestBuzzAudio());
+
+      // Navigation & HUD Buttons
+      document.getElementById('btn-start').addEventListener('click', startGame);
+      document.getElementById('btn-pause').addEventListener('click', pauseGame);
+      document.getElementById('btn-resume').addEventListener('click', resumeGame);
+      document.getElementById('btn-restart-pause').addEventListener('click', startGame);
+      document.getElementById('btn-menu-pause').addEventListener('click', returnToMenu);
+      document.getElementById('btn-play-again').addEventListener('click', startGame);
+      document.getElementById('btn-menu-go').addEventListener('click', returnToMenu);
+
+      const toggleMute = () => {
+        state.muted = !state.muted;
+        updateMuteUI();
+      };
+      document.getElementById('btn-mute').addEventListener('click', toggleMute);
+      btnMutePause.addEventListener('click', toggleMute);
+
+      // Initialize on window load
+      window.addEventListener('resize', resizeCanvas);
+      window.onload = () => {
+        resizeCanvas();
+        updateScoreHUD(false);
+        updateMuteUI();
+        updateAssetsHeaderStatus();
+        faceAsset.tryAutoLoad(0);
+        audioEngine.tryAutoLoadHit(0);
+        audioEngine.tryAutoLoadBuzz(0);
+        requestAnimationFrame(gameLoop);
+      };
+    })();
+  </script>
+</body>
+</html>
